@@ -232,13 +232,29 @@ SIMPLE_JWT = {
 # CORS SETTINGS
 # =============================================================================
 
+# Get CORS origins from environment
 CORS_ALLOWED_ORIGINS = [
     origin.strip() for origin in 
     os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173').split(',')
     if origin.strip()
 ]
 
+# Auto-add Render frontend URL pattern
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://.*\.onrender\.com$",  # Allow all Render subdomains
+]
+
 CORS_ALLOW_CREDENTIALS = True
+
+# Allow all methods
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
 
 # Разрешенные заголовки для CORS
 CORS_ALLOW_HEADERS = [
