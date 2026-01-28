@@ -1,0 +1,48 @@
+# =============================================================================
+# DOCKER IGNORE - BACKEND
+# =============================================================================
+
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+.env.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Django
+*.log
+*.pot
+*.pyc
+db.sqlite3
+media/*
+staticfiles/*
+.coverage
+htmlcov/
+
+# Testing
+.pytest_cache/
+.tox/
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Misc
+.DS_Store
+Thumbs.db
+*.bak

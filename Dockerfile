@@ -1,41 +1,51 @@
 # =============================================================================
 # DOCKERFILE FOR DJANGO BACKEND
 # Production-ready with Gunicorn
+# Supports: Render, Railway, Docker Compose, VPS
 # =============================================================================
 FROM python:3.11-slim
 
-# Установка переменных окружения
+# Build arguments
+ARG ENVIRONMENT=production
+
+# Environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PIP_NO_CACHE_DIR=1
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 ENV PORT=8000
+ENV DJANGO_SETTINGS_MODULE=marsdevs.settings
 
-# Установка рабочей директории
+# Working directory
 WORKDIR /app
 
-# Установка зависимостей системы
+# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     gcc \
+    curl \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# Копирование и установка Python зависимостей
+# Copy and install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Копирование исходного кода
+# Copy source code
 COPY . .
 
-# Создание директории для медиа файлов и статики
+# Create directories
 RUN mkdir -p /app/media /app/staticfiles
 
-# Сбор статики при сборке образа
-RUN python manage.py collectstatic --noinput --clear || true
+# Collect static files (with dummy secret key for build)
+RUN SECRET_KEY=build-key python manage.py collectstatic --noinput --clear 2>/dev/null || true
 
-# Открытие порта
+# Expose port
 EXPOSE 8000
 
-# Команда запуска - использует PORT из env (Render/Railway передают свой порт)
-CMD python manage.py migrate --noinput && gunicorn marsdevs.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --threads 2 --timeout 120
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:${PORT}/api/auth/login/ || exit 1
+
+# Start command - uses PORT from environment (Render/Railway provide this)
+CMD ["sh", "-c", "python manage.py migrate --noinput && gunicorn marsdevs.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers 2 --threads 2 --timeout 120 --access-logfile - --error-logfile -"]
