@@ -40,6 +40,10 @@ RUN mkdir -p /app/media /app/staticfiles
 # Collect static files (with dummy secret key for build)
 RUN SECRET_KEY=build-key python manage.py collectstatic --noinput --clear 2>/dev/null || true
 
+# Copy and make startup script executable
+COPY start.sh /app/start.sh
+RUN chmod +x /app/start.sh
+
 # Expose port
 EXPOSE 8000
 
@@ -47,5 +51,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:${PORT}/health/ || exit 1
 
-# Start command - migrate, seed, then run gunicorn
-CMD ["sh", "-c", "python manage.py migrate --noinput && python manage.py seed || true && gunicorn marsdevs.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers 2 --threads 2 --timeout 120 --access-logfile - --error-logfile -"]
+# Start command
+CMD ["/app/start.sh"]
