@@ -31,7 +31,7 @@ class Command(BaseCommand):
         admin_password = options['admin_password']
         teacher_password = options['teacher_password']
 
-        self.stdout.write('Создание начальных данных...')
+        self.stdout.write('Creating seed data...')
 
         # Создаём администратора
         admin, created = User.objects.get_or_create(
@@ -49,10 +49,10 @@ class Command(BaseCommand):
             admin.set_password(admin_password)
             admin.save()
             self.stdout.write(self.style.SUCCESS(
-                f'✓ Администратор создан: admin / {admin_password}'
+                f'[OK] Administrator created: admin / {admin_password}'
             ))
         else:
-            self.stdout.write(self.style.WARNING('! Администратор уже существует'))
+            self.stdout.write(self.style.WARNING('[!] Administrator already exists'))
 
         # Создаём курсы
         courses_data = [
@@ -84,9 +84,9 @@ class Command(BaseCommand):
             )
             created_courses.append(course)
             if created:
-                self.stdout.write(self.style.SUCCESS(f'✓ Курс создан: {course.name}'))
+                self.stdout.write(self.style.SUCCESS(f'[OK] Course created: {course.name}'))
             else:
-                self.stdout.write(self.style.WARNING(f'! Курс уже существует: {course.name}'))
+                self.stdout.write(self.style.WARNING(f'[!] Course already exists: {course.name}'))
 
         # Создаём учителя
         teacher, created = User.objects.get_or_create(
@@ -104,10 +104,10 @@ class Command(BaseCommand):
             teacher.assigned_courses.set(created_courses[:2])  # Frontend и Backend курсы
             teacher.save()
             self.stdout.write(self.style.SUCCESS(
-                f'✓ Учитель создан: teacher / {teacher_password}'
+                f'[OK] Teacher created: teacher / {teacher_password}'
             ))
         else:
-            self.stdout.write(self.style.WARNING('! Учитель уже существует'))
+            self.stdout.write(self.style.WARNING('[!] Teacher already exists'))
 
         # Создаём примеры заданий
         tasks_data = [
@@ -149,9 +149,9 @@ class Command(BaseCommand):
                 defaults=task_data
             )
             if created:
-                self.stdout.write(self.style.SUCCESS(f'✓ Задание создано: {task.title}'))
+                self.stdout.write(self.style.SUCCESS(f'[OK] Task created: {task.title}'))
             else:
-                self.stdout.write(self.style.WARNING(f'! Задание уже существует: {task.title}'))
+                self.stdout.write(self.style.WARNING(f'[!] Task already exists: {task.title}'))
 
         # Создаём товары магазина
         products_data = [
@@ -193,17 +193,17 @@ class Command(BaseCommand):
                 defaults=product_data
             )
             if created:
-                self.stdout.write(self.style.SUCCESS(f'✓ Товар создан: {product.name}'))
+                self.stdout.write(self.style.SUCCESS(f'[OK] Product created: {product.name}'))
             else:
-                self.stdout.write(self.style.WARNING(f'! Товар уже существует: {product.name}'))
+                self.stdout.write(self.style.WARNING(f'[!] Product already exists: {product.name}'))
 
         self.stdout.write('')
         self.stdout.write(self.style.SUCCESS('=' * 50))
-        self.stdout.write(self.style.SUCCESS('Начальные данные успешно созданы!'))
+        self.stdout.write(self.style.SUCCESS('Seed data created successfully!'))
         self.stdout.write('')
-        self.stdout.write('Учётные записи:')
-        self.stdout.write(f'  Админ:   admin / {admin_password}')
-        self.stdout.write(f'  Учитель: teacher / {teacher_password}')
+        self.stdout.write('Accounts:')
+        self.stdout.write(f'  Admin:   admin / {admin_password}')
+        self.stdout.write(f'  Teacher: teacher / {teacher_password}')
         self.stdout.write('')
-        self.stdout.write('Админ-панель: http://localhost:8000/admin/')
+        self.stdout.write('Admin panel: http://localhost:8000/admin/')
         self.stdout.write(self.style.SUCCESS('=' * 50))
