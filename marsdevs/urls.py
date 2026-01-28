@@ -5,8 +5,24 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from django.http import JsonResponse
+
+
+def health_check(request):
+    """Health check endpoint for Render/Railway."""
+    return JsonResponse({
+        'status': 'ok',
+        'service': 'Mars Devs API',
+        'version': '1.0.0'
+    })
+
 
 urlpatterns = [
+    # Health check endpoint (for Render/Railway)
+    path('', health_check, name='health-check'),
+    path('health/', health_check, name='health'),
+    
+    # Admin and API
     path('admin/', admin.site.urls),
     path('api/', include('api.urls')),
 ]
