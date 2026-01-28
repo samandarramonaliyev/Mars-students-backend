@@ -9,6 +9,7 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PIP_NO_CACHE_DIR=1
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+ENV PORT=8000
 
 # Установка рабочей директории
 WORKDIR /app
@@ -30,17 +31,11 @@ COPY . .
 # Создание директории для медиа файлов и статики
 RUN mkdir -p /app/media /app/staticfiles
 
-# Создание non-root пользователя для безопасности
-RUN adduser --disabled-password --gecos '' appuser \
-    && chown -R appuser:appuser /app
-USER appuser
+# Сбор статики при сборке образа
+RUN python manage.py collectstatic --noinput --clear || true
 
 # Открытие порта
 EXPOSE 8000
 
-# Healthcheck
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/auth/login/', timeout=5)" || exit 1
-
-# Команда запуска (можно переопределить в docker-compose)
-CMD ["gunicorn", "marsdevs.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3", "--threads", "2"]
+# Команда запуска - использует PORT из env (Render/Railway передают свой порт)
+CMD python manage.py migrate --noinput && gunicorn marsdevs.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --threads 2 --timeout 120

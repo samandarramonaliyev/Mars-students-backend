@@ -24,7 +24,13 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-dev-key-change-me')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
 
+# Allowed hosts - includes Render domain pattern
 ALLOWED_HOSTS = [h.strip() for h in os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',') if h.strip()]
+
+# Auto-add Render hostname if present
+RENDER_EXTERNAL_HOSTNAME = os.getenv('RENDER_EXTERNAL_HOSTNAME')
+if RENDER_EXTERNAL_HOSTNAME:
+    ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
 
 # CSRF trusted origins (для production)
 CSRF_TRUSTED_ORIGINS = [
@@ -32,6 +38,10 @@ CSRF_TRUSTED_ORIGINS = [
     os.getenv('CSRF_TRUSTED_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173').split(',')
     if origin.strip()
 ]
+
+# Auto-add Render URL to CSRF trusted origins
+if RENDER_EXTERNAL_HOSTNAME:
+    CSRF_TRUSTED_ORIGINS.append(f'https://{RENDER_EXTERNAL_HOSTNAME}')
 
 # =============================================================================
 # APPLICATION DEFINITION
@@ -171,9 +181,10 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # =============================================================================
 
 if not DEBUG:
-    # HTTPS настройки
+    # HTTPS настройки (Render/Railway handle SSL termination)
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-    SECURE_SSL_REDIRECT = os.getenv('SECURE_SSL_REDIRECT', 'True').lower() == 'true'
+    # Don't force SSL redirect - Render handles this at the edge
+    SECURE_SSL_REDIRECT = os.getenv('SECURE_SSL_REDIRECT', 'False').lower() == 'true'
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     
@@ -185,7 +196,7 @@ if not DEBUG:
     # Защита от XSS и clickjacking
     SECURE_BROWSER_XSS_FILTER = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
-    X_FRAME_OPTIONS = 'DENY'
+    X_FRAME_OPTIONS = 'SAMEORIGIN'  # Allow admin iframe
 
 # Django REST Framework настройки
 REST_FRAMEWORK = {
