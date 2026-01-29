@@ -239,9 +239,11 @@ CORS_ALLOWED_ORIGINS = [
     if origin.strip()
 ]
 
-# Auto-add Render frontend URL pattern
+# Auto-add frontend URL patterns for various hosting platforms
 CORS_ALLOWED_ORIGIN_REGEXES = [
     r"^https://.*\.onrender\.com$",  # Allow all Render subdomains
+    r"^https://.*\.vercel\.app$",    # Allow all Vercel subdomains
+    r"^https://.*\.netlify\.app$",   # Allow all Netlify subdomains
 ]
 
 CORS_ALLOW_CREDENTIALS = True
