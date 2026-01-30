@@ -15,6 +15,7 @@ from .views import (
     ChessStartGameView, ChessFinishGameView, ChessMyGamesView,
     ChessOnlineStudentsView, ChessInviteView, ChessMyInvitesView,
     ChessRespondInviteView, ChessGameStateView, ChessCancelInviteView,
+    CoinNotificationsView, CoinNotificationsMarkSeenView,
     # Магазин
     ShopProductsView, ShopBuyView, ShopPurchaseHistoryView
 )
@@ -60,6 +61,10 @@ urlpatterns = [
     path('chess/respond-invite/', ChessRespondInviteView.as_view(), name='chess-respond-invite'),
     path('chess/cancel-invite/', ChessCancelInviteView.as_view(), name='chess-cancel-invite'),
     path('chess/game/<int:game_id>/', ChessGameStateView.as_view(), name='chess-game-state'),
+    
+    # Уведомления о coin
+    path('notifications/coins/', CoinNotificationsView.as_view(), name='coin-notifications'),
+    path('notifications/coins/mark-seen/', CoinNotificationsMarkSeenView.as_view(), name='coin-notifications-mark-seen'),
     
     # Курсы
     path('courses/', CourseListView.as_view(), name='courses-list'),

@@ -8,7 +8,8 @@ from django.conf import settings
 from .models import (
     User, Course, Task, TaskSubmission,
     CoinTransaction, TypingResult, ChessGameHistory,
-    ChessGame, ChessInvite, Product, ShopPurchase
+    ChessGame, ChessInvite, Product, ShopPurchase,
+    CoinNotification
 )
 import secrets
 import string
@@ -496,6 +497,13 @@ class ChessInviteResponseSerializer(serializers.Serializer):
     """Сериализатор для ответа на приглашение."""
     invite_id = serializers.IntegerField()
     accept = serializers.BooleanField()
+
+
+class CoinNotificationSerializer(serializers.ModelSerializer):
+    """Сериализатор уведомлений о начислении coin."""
+    class Meta:
+        model = CoinNotification
+        fields = ['id', 'amount', 'reason', 'created_at']
 
 
 class ChessStatsSerializer(serializers.Serializer):

@@ -248,7 +248,7 @@ class ShopPurchaseAdmin(admin.ModelAdmin):
         Работает только для PENDING и SOLD статусов.
         """
         from django.db import transaction
-        from .models import CoinTransaction
+        from .models import CoinTransaction, CoinNotification
         
         # Фильтруем только те, которые можно вернуть (не RETURNED)
         returnable = queryset.exclude(status=ShopPurchase.Status.RETURNED)
@@ -269,6 +269,12 @@ class ShopPurchaseAdmin(admin.ModelAdmin):
                     source=CoinTransaction.Source.OTHER,
                     balance_after=student.balance,
                     created_by=request.user
+                )
+                
+                CoinNotification.objects.create(
+                    student=student,
+                    amount=purchase.price,
+                    reason=f'Возврат за: {purchase.product_name}'
                 )
                 
                 # Обновляем статус покупки

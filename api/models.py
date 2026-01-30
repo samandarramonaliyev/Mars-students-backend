@@ -501,6 +501,28 @@ class ChessInvite(models.Model):
         return f"{self.from_player.username} → {self.to_player.username} ({self.get_status_display()})"
 
 
+class CoinNotification(models.Model):
+    """Уведомление о начислении coin студенту."""
+    student = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='coin_notifications',
+        verbose_name='Студент'
+    )
+    amount = models.IntegerField(verbose_name='Количество coin')
+    reason = models.CharField(max_length=255, null=True, blank=True, verbose_name='Причина')
+    is_seen = models.BooleanField(default=False, verbose_name='Просмотрено')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Создано')
+    
+    class Meta:
+        verbose_name = 'Уведомление о coin'
+        verbose_name_plural = 'Уведомления о coin'
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"{self.student.username} +{self.amount} coin"
+
+
 def product_image_upload_path(instance, filename):
     """Генерация пути для загрузки изображений товаров."""
     ext = filename.split('.')[-1]
