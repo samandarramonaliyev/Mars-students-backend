@@ -1,11 +1,15 @@
 """
 Тесты для API Mars Devs.
 """
-from django.test import TestCase
+from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
 from rest_framework.test import APITestCase, APIClient
 from rest_framework import status
 from django.contrib.auth import get_user_model
+from asgiref.sync import async_to_sync
+from channels.testing import WebsocketCommunicator
+from rest_framework_simplejwt.tokens import RefreshToken
+from marsdevs.asgi import application
 from .models import Course, Task, CoinTransaction, ChessGame
 from django.utils import timezone
 
@@ -200,6 +204,98 @@ class CoinTransactionTests(APITestCase):
         response = self.client.post(url, data, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class ChessWebsocketTests(TransactionTestCase):
+    """Минимальные проверки websocket шахмат."""
+
+    def setUp(self):
+        self.white = User.objects.create_user(
+            username='white_player',
+            password='testpass123',
+            role='STUDENT'
+        )
+        self.black = User.objects.create_user(
+            username='black_player',
+            password='testpass123',
+            role='STUDENT'
+        )
+        self.game = ChessGame.objects.create(
+            player=self.white,
+            opponent=self.black,
+            opponent_type=ChessGame.OpponentType.STUDENT,
+            white_player=self.white,
+            current_turn='white',
+            status=ChessGame.Status.IN_PROGRESS,
+            fen_position='rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+            white_time=300,
+            black_time=300,
+            last_move_at=timezone.now()
+        )
+
+    def _connect(self, user, game_id):
+        token = str(RefreshToken.for_user(user).access_token)
+        communicator = WebsocketCommunicator(
+            application,
+            f"/ws/chess/{game_id}/?token={token}"
+        )
+        connected, _ = async_to_sync(communicator.connect)()
+        return communicator, connected
+
+    async def _receive_until(self, communicator, expected_types, max_messages=6):
+        for _ in range(max_messages):
+            message = await communicator.receive_json_from(timeout=2)
+            if message.get('type') in expected_types:
+                return message
+        return None
+
+    def test_rejects_illegal_move(self):
+        communicator, connected = self._connect(self.white, self.game.id)
+        self.assertTrue(connected)
+        try:
+            async_to_sync(self._receive_until)(communicator, {'game_state'})
+            async_to_sync(communicator.send_json_to)({
+                'type': 'move',
+                'from': 'a2',
+                'to': 'a5',
+                'promotion': 'q'
+            })
+            response = async_to_sync(self._receive_until)(communicator, {'error'})
+            self.assertIsNotNone(response)
+            self.assertEqual(response['type'], 'error')
+        finally:
+            async_to_sync(communicator.disconnect)()
+
+    def test_checkmate_triggers_game_over(self):
+        mate_game = ChessGame.objects.create(
+            player=self.white,
+            opponent=self.black,
+            opponent_type=ChessGame.OpponentType.STUDENT,
+            white_player=self.white,
+            current_turn='white',
+            status=ChessGame.Status.IN_PROGRESS,
+            fen_position='6k1/5Q2/6K1/8/8/8/8/8 w - - 0 1',
+            white_time=300,
+            black_time=300,
+            last_move_at=timezone.now()
+        )
+        communicator, connected = self._connect(self.white, mate_game.id)
+        self.assertTrue(connected)
+        try:
+            async_to_sync(self._receive_until)(communicator, {'game_state'})
+            async_to_sync(communicator.send_json_to)({
+                'type': 'move',
+                'from': 'f7',
+                'to': 'g7',
+                'promotion': 'q'
+            })
+            move_payload = async_to_sync(self._receive_until)(communicator, {'move'})
+            self.assertIsNotNone(move_payload)
+            game_over_payload = async_to_sync(self._receive_until)(communicator, {'game_over'})
+            self.assertIsNotNone(game_over_payload)
+            self.assertEqual(game_over_payload.get('ended_reason'), 'checkmate')
+        finally:
+            async_to_sync(communicator.disconnect)()
 
 
 class ChessMoveTests(APITestCase):
