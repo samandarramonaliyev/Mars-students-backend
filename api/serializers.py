@@ -391,6 +391,8 @@ class ChessGameSerializer(serializers.ModelSerializer):
     """Сериализатор шахматной партии."""
     player_name = serializers.SerializerMethodField()
     opponent_name = serializers.SerializerMethodField()
+    winner_name = serializers.SerializerMethodField()
+    loser_name = serializers.SerializerMethodField()
     opponent_display = serializers.CharField(source='get_opponent_display', read_only=True)
     result_display = serializers.CharField(source='get_result_display', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
@@ -402,6 +404,8 @@ class ChessGameSerializer(serializers.ModelSerializer):
             'opponent', 'opponent_name', 'opponent_display',
             'status', 'status_display', 'result', 'result_display',
             'coins_earned', 'fen_position', 'last_move', 'current_turn',
+            'move_history', 'white_time', 'black_time', 'ended_reason',
+            'winner', 'winner_name', 'loser', 'loser_name',
             'white_player', 'started_at', 'finished_at', 'updated_at'
         ]
         read_only_fields = ['id', 'player', 'started_at', 'finished_at', 'updated_at']
@@ -412,6 +416,16 @@ class ChessGameSerializer(serializers.ModelSerializer):
     def get_opponent_name(self, obj):
         if obj.opponent:
             return obj.opponent.get_full_name() or obj.opponent.username
+        return None
+
+    def get_winner_name(self, obj):
+        if obj.winner:
+            return obj.winner.get_full_name() or obj.winner.username
+        return None
+
+    def get_loser_name(self, obj):
+        if obj.loser:
+            return obj.loser.get_full_name() or obj.loser.username
         return None
 
 

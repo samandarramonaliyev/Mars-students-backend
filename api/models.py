@@ -408,12 +408,26 @@ class ChessGame(models.Model):
         default='rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
         verbose_name='Позиция (FEN)'
     )
+
+    # История ходов (SAN)
+    move_history = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name='История ходов'
+    )
     
     # Последний ход
     last_move = models.CharField(max_length=10, blank=True, verbose_name='Последний ход')
     
     # Чей ход (для PvP): 'white' или 'black'
     current_turn = models.CharField(max_length=5, default='white', verbose_name='Чей ход')
+
+    # Таймеры (в секундах)
+    white_time = models.IntegerField(default=300, verbose_name='Время белых (сек)')
+    black_time = models.IntegerField(default=300, verbose_name='Время чёрных (сек)')
+
+    # Время последнего хода
+    last_move_at = models.DateTimeField(null=True, blank=True, verbose_name='Время последнего хода')
     
     # Кто играет белыми (для PvP)
     white_player = models.ForeignKey(
@@ -429,6 +443,27 @@ class ChessGame(models.Model):
     started_at = models.DateTimeField(auto_now_add=True, verbose_name='Начало')
     finished_at = models.DateTimeField(null=True, blank=True, verbose_name='Окончание')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='Обновлено')
+
+    # Причина завершения
+    ended_reason = models.CharField(max_length=20, null=True, blank=True, verbose_name='Причина завершения')
+
+    # Победитель и проигравший
+    winner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='won_chess_games',
+        verbose_name='Победитель'
+    )
+    loser = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='lost_chess_games',
+        verbose_name='Проигравший'
+    )
     
     class Meta:
         verbose_name = 'Шахматная партия'

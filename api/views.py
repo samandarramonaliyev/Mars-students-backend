@@ -2,6 +2,7 @@
 API views для Mars Devs.
 """
 from rest_framework import status, generics, viewsets
+import chess
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -35,6 +36,7 @@ from .serializers import (
 )
 from .permissions import IsTeacher, IsStudent, IsTeacherOrAdmin, IsOwnerOrTeacher
 from datetime import timedelta
+from .chess_logic import CHESS_REWARDS
 
 
 class LoginView(APIView):
@@ -581,20 +583,6 @@ class TeacherStatsView(APIView):
 
 # ================== Шахматы (реальная игра) ==================
 
-# Награды за шахматы
-CHESS_REWARDS = {
-    'BOT': {
-        'easy': {'WIN': 45, 'DRAW': 10, 'LOSE': 0},
-        'medium': {'WIN': 75, 'DRAW': 20, 'LOSE': 0},
-        'hard': {'WIN': 100, 'DRAW': 30, 'LOSE': 0},
-    },
-    'STUDENT': {
-        'WIN': 50,
-        'DRAW': 20,
-        'LOSE': 0
-    }
-}
-
 
 class ChessStartGameView(APIView):
     """
@@ -616,7 +604,11 @@ class ChessStartGameView(APIView):
             opponent_type=opponent_type,
             bot_level=bot_level if opponent_type == 'BOT' else None,
             white_player=request.user,  # Игрок всегда играет белыми против бота
-            status=ChessGame.Status.IN_PROGRESS
+            status=ChessGame.Status.IN_PROGRESS,
+            move_history=[],
+            white_time=300,
+            black_time=300,
+            last_move_at=timezone.now()
         )
         
         return Response({
@@ -883,7 +875,11 @@ class ChessRespondInviteView(APIView):
                 opponent_type=ChessGame.OpponentType.STUDENT,
                 opponent=invite.to_player,
                 white_player=white_player,
-                status=ChessGame.Status.IN_PROGRESS
+                status=ChessGame.Status.IN_PROGRESS,
+                move_history=[],
+                white_time=300,
+                black_time=300,
+                last_move_at=timezone.now()
             )
             
             invite.status = ChessInvite.Status.ACCEPTED
@@ -966,19 +962,74 @@ class ChessGameStateView(APIView):
             )
         
         # Получаем данные хода
-        fen = request.data.get('fen')
-        move = request.data.get('move')
+        from_square = request.data.get('from')
+        to_square = request.data.get('to')
+        promotion = request.data.get('promotion', 'q')
+        move_input = request.data.get('move')
         
-        if not fen or not move:
+        board = chess.Board(game.fen_position)
+        
+        # Рассчитываем время текущего игрока
+        now = timezone.now()
+        if game.last_move_at:
+            elapsed = int((now - game.last_move_at).total_seconds())
+            if game.current_turn == 'white':
+                game.white_time = max(0, game.white_time - elapsed)
+            else:
+                game.black_time = max(0, game.black_time - elapsed)
+        game.last_move_at = now
+        
+        move = None
+        if from_square and to_square:
+            uci = f"{from_square}{to_square}{promotion if promotion else ''}"
+            try:
+                move = chess.Move.from_uci(uci)
+            except ValueError:
+                move = None
+        elif move_input:
+            try:
+                if len(move_input) in [4, 5]:
+                    move = chess.Move.from_uci(move_input)
+                else:
+                    move = board.parse_san(move_input)
+            except Exception:
+                move = None
+        
+        if not move or move not in board.legal_moves:
             return Response(
-                {'error': 'Необходимо указать fen и move'},
+                {'error': 'Недопустимый ход'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Обновляем состояние игры
-        game.fen_position = fen
-        game.last_move = move
-        game.current_turn = 'black' if player_color == 'white' else 'white'
+        san = board.san(move)
+        board.push(move)
+        
+        game.fen_position = board.fen()
+        game.last_move = move.uci()
+        history = game.move_history or []
+        history.append(san)
+        game.move_history = history
+        game.current_turn = 'white' if board.turn == chess.WHITE else 'black'
+        
+        # Проверка завершения игры
+        if board.is_checkmate():
+            loser_color = 'white' if board.turn == chess.WHITE else 'black'
+            winner_color = 'black' if loser_color == 'white' else 'white'
+            black_player = game.player if game.white_player != game.player else game.opponent
+            winner = game.white_player if winner_color == 'white' else black_player
+            loser = game.white_player if loser_color == 'white' else black_player
+            game.status = ChessGame.Status.FINISHED
+            game.ended_reason = 'checkmate'
+            game.winner = winner
+            game.loser = loser
+            game.result = ChessGame.Result.WIN if game.player == winner else ChessGame.Result.LOSE
+            game.finished_at = timezone.now()
+        elif board.is_stalemate() or board.is_insufficient_material() or board.can_claim_draw():
+            game.status = ChessGame.Status.FINISHED
+            game.ended_reason = 'draw'
+            game.result = ChessGame.Result.DRAW
+            game.finished_at = timezone.now()
+        
         game.save()
         
         return Response({

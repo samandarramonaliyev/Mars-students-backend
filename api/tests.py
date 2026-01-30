@@ -6,7 +6,8 @@ from django.urls import reverse
 from rest_framework.test import APITestCase, APIClient
 from rest_framework import status
 from django.contrib.auth import get_user_model
-from .models import Course, Task, CoinTransaction
+from .models import Course, Task, CoinTransaction, ChessGame
+from django.utils import timezone
 
 User = get_user_model()
 
@@ -198,6 +199,60 @@ class CoinTransactionTests(APITestCase):
         }
         response = self.client.post(url, data, format='json')
         
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class ChessMoveTests(APITestCase):
+    """Тесты ходов в шахматах."""
+
+    def setUp(self):
+        """Создание тестовых данных."""
+        self.student1 = User.objects.create_user(
+            username='chess_student1',
+            password='testpass123',
+            role='STUDENT'
+        )
+        self.student2 = User.objects.create_user(
+            username='chess_student2',
+            password='testpass123',
+            role='STUDENT'
+        )
+        self.game = ChessGame.objects.create(
+            player=self.student1,
+            opponent_type=ChessGame.OpponentType.STUDENT,
+            opponent=self.student2,
+            white_player=self.student1,
+            status=ChessGame.Status.IN_PROGRESS,
+            move_history=[],
+            white_time=300,
+            black_time=300,
+            last_move_at=timezone.now()
+        )
+        self.client = APIClient()
+
+    def test_valid_move(self):
+        """Тест корректного хода."""
+        self.client.force_authenticate(user=self.student1)
+        url = reverse('chess-game-state', args=[self.game.id])
+        data = {
+            'from': 'e2',
+            'to': 'e4',
+            'promotion': 'q'
+        }
+        response = self.client.post(url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['game']['move_history']), 1)
+
+    def test_wrong_turn_move(self):
+        """Тест хода не в свой ход."""
+        self.client.force_authenticate(user=self.student2)
+        url = reverse('chess-game-state', args=[self.game.id])
+        data = {
+            'from': 'e7',
+            'to': 'e5',
+            'promotion': 'q'
+        }
+        response = self.client.post(url, data, format='json')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         
         # Проверяем, что баланс не изменился
