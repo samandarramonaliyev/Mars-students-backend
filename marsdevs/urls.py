@@ -84,6 +84,8 @@ urlpatterns = [
     path('api/', include('api.urls')),
 ]
 
-# Раздача media файлов в режиме разработки
-if settings.DEBUG:
+# Раздача media файлов
+# В продакшене включается через переменную окружения SERVE_MEDIA=true
+serve_media = settings.DEBUG or os.getenv('SERVE_MEDIA', 'false').lower() == 'true'
+if serve_media:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
