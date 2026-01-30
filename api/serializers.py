@@ -43,21 +43,40 @@ class UserSerializer(serializers.ModelSerializer):
 
 class LoginSerializer(serializers.Serializer):
     """Сериализатор для логина."""
-    username = serializers.CharField(max_length=150)
+    # username оставлен для совместимости с текущим фронтендом
+    username = serializers.CharField(max_length=150, required=False, allow_blank=True)
+    # login/email добавлены для совместимости с альтернативными клиентами
+    login = serializers.CharField(max_length=150, required=False, allow_blank=True)
+    email = serializers.EmailField(required=False, allow_blank=True)
     password = serializers.CharField(write_only=True)
     expected_role = serializers.ChoiceField(
         choices=['TEACHER', 'STUDENT'],
         required=False,
         help_text='Ожидаемая роль пользователя'
     )
+    # role — альтернативное имя поля ожидаемой роли (на случай другого клиента)
+    role = serializers.ChoiceField(
+        choices=['TEACHER', 'STUDENT'],
+        required=False,
+        help_text='Ожидаемая роль пользователя (alias)'
+    )
     
     def validate(self, data):
-        username = data.get('username')
+        # Берём идентификатор в порядке приоритета, чтобы не ломать старых клиентов
+        identifier = (data.get('username') or data.get('login') or data.get('email') or '').strip()
         password = data.get('password')
-        expected_role = data.get('expected_role')
+        expected_role = data.get('expected_role') or data.get('role')
         
-        if username and password:
-            user = authenticate(username=username, password=password)
+        if identifier and password:
+            # Если передан email — ищем пользователя по email и логиним по username
+            if '@' in identifier:
+                try:
+                    user_obj = User.objects.get(email__iexact=identifier)
+                    identifier = user_obj.username
+                except User.DoesNotExist:
+                    raise serializers.ValidationError('Неверный логин или пароль.')
+            
+            user = authenticate(username=identifier, password=password)
             
             if not user:
                 raise serializers.ValidationError('Неверный логин или пароль.')
