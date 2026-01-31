@@ -17,21 +17,35 @@ class ChessConsumer(AsyncJsonWebsocketConsumer):
     """WebSocket consumer for realtime chess games."""
 
     async def connect(self):
-        self.game_id = int(self.scope['url_route']['kwargs']['game_id'])
+        try:
+            self.game_id = int(self.scope['url_route']['kwargs']['game_id'])
+        except (TypeError, ValueError):
+            await self.accept()
+            await self.send_json({'type': 'error', 'message': 'game_not_found'})
+            await self.close(code=4404)
+            return
+
         self.user = self.scope.get('user')
+        await self.accept()
 
         if not self.user or not self.user.is_authenticated:
-            await self.close()
+            await self.send_json({'type': 'error', 'message': 'auth_failed'})
+            await self.close(code=4401)
             return
 
         game = await get_game(self.game_id)
-        if not game or not await is_user_in_game(game, self.user):
-            await self.close()
+        if not game:
+            await self.send_json({'type': 'error', 'message': 'game_not_found'})
+            await self.close(code=4404)
+            return
+
+        if not await is_user_in_game(game, self.user):
+            await self.send_json({'type': 'error', 'message': 'not_in_game'})
+            await self.close(code=4403)
             return
 
         self.group_name = f"chess_{self.game_id}"
         await self.channel_layer.group_add(self.group_name, self.channel_name)
-        await self.accept()
 
         await self.send_json({
             'type': 'game_state',
