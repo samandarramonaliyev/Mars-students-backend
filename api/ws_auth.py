@@ -49,6 +49,16 @@ class JwtAuthMiddlewareInstance:
         query_string = self.scope.get('query_string', b'').decode()
         params = parse_qs(query_string)
         token = params.get('token', [None])[0]
+        if not token:
+            headers = dict(self.scope.get('headers') or [])
+            auth_header = headers.get(b'authorization')
+            if auth_header:
+                try:
+                    auth_value = auth_header.decode()
+                except Exception:
+                    auth_value = ''
+                if auth_value.lower().startswith('bearer '):
+                    token = auth_value.split(' ', 1)[1].strip()
         user = None
         if token:
             user = await get_user_for_token(token)

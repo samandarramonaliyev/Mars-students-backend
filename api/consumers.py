@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from datetime import timedelta
 
 import chess
@@ -11,6 +12,7 @@ from .chess_logic import calculate_reward
 
 
 ACTIVE_TIMER_TASKS = {}
+logger = logging.getLogger(__name__)
 
 
 class ChessConsumer(AsyncJsonWebsocketConsumer):
@@ -23,6 +25,7 @@ class ChessConsumer(AsyncJsonWebsocketConsumer):
             await self.accept()
             await self.send_json({'type': 'error', 'message': 'game_not_found'})
             await self.close(code=4404)
+            logger.warning("WS connect rejected: invalid game id")
             return
 
         self.user = self.scope.get('user')
@@ -31,17 +34,20 @@ class ChessConsumer(AsyncJsonWebsocketConsumer):
         if not self.user or not self.user.is_authenticated:
             await self.send_json({'type': 'error', 'message': 'auth_failed'})
             await self.close(code=4401)
+            logger.warning("WS connect rejected: unauthenticated")
             return
 
         game = await get_game(self.game_id)
         if not game:
             await self.send_json({'type': 'error', 'message': 'game_not_found'})
             await self.close(code=4404)
+            logger.warning("WS connect rejected: game not found (id=%s)", self.game_id)
             return
 
         if not await is_user_in_game(game, self.user):
             await self.send_json({'type': 'error', 'message': 'not_in_game'})
             await self.close(code=4403)
+            logger.warning("WS connect rejected: user not in game (id=%s, user=%s)", self.game_id, self.user.id)
             return
 
         self.group_name = f"chess_{self.game_id}"
@@ -53,10 +59,12 @@ class ChessConsumer(AsyncJsonWebsocketConsumer):
         })
 
         await self.start_timer_task()
+        logger.info("WS connected: game=%s user=%s", self.game_id, self.user.id)
 
     async def disconnect(self, close_code):
         if hasattr(self, 'group_name'):
             await self.channel_layer.group_discard(self.group_name, self.channel_name)
+        logger.info("WS disconnected: game=%s code=%s", getattr(self, 'game_id', None), close_code)
 
     async def receive_json(self, content, **kwargs):
         message_type = content.get('type')
