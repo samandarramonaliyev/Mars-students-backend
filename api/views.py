@@ -36,7 +36,7 @@ from .serializers import (
 )
 from .permissions import IsTeacher, IsStudent, IsTeacherOrAdmin, IsOwnerOrTeacher
 from datetime import timedelta
-from .chess_logic import CHESS_REWARDS
+from .chess_logic import CHESS_REWARDS, calculate_reward
 
 
 class LoginView(APIView):
@@ -902,6 +902,120 @@ class ChessRespondInviteView(APIView):
             })
 
 
+def _apply_game_over_state(game, board):
+    if board.is_checkmate():
+        loser_color = 'white' if board.turn == chess.WHITE else 'black'
+        winner_color = 'black' if loser_color == 'white' else 'white'
+        black_player = game.player if game.white_player != game.player else game.opponent
+        winner = game.white_player if winner_color == 'white' else black_player
+        loser = game.white_player if loser_color == 'white' else black_player
+        game.status = ChessGame.Status.FINISHED
+        game.ended_reason = 'checkmate'
+        game.winner = winner
+        game.loser = loser
+        game.result = ChessGame.Result.WIN if game.player == winner else ChessGame.Result.LOSE
+        game.finished_at = timezone.now()
+        return True
+
+    if board.is_stalemate() or board.is_insufficient_material() or board.can_claim_draw():
+        game.status = ChessGame.Status.FINISHED
+        game.ended_reason = 'draw'
+        game.result = ChessGame.Result.DRAW
+        game.finished_at = timezone.now()
+        return True
+
+    return False
+
+
+def _award_chess_rewards(game):
+    if game.status != ChessGame.Status.FINISHED:
+        return
+
+    if game.opponent_type == ChessGame.OpponentType.BOT:
+        if game.result == ChessGame.Result.DRAW:
+            coins = calculate_reward('BOT', game.bot_level, 'DRAW')
+            if coins > 0:
+                _add_coins(game.player, coins, f'Шахматы: Ничья против {game.get_opponent_display()}')
+            return
+        if game.winner == game.player:
+            coins = calculate_reward('BOT', game.bot_level, 'WIN')
+            if coins > 0:
+                _add_coins(game.player, coins, f'Шахматы: Победа против {game.get_opponent_display()}')
+        return
+
+    if game.result == ChessGame.Result.DRAW:
+        coins = calculate_reward('STUDENT', None, 'DRAW')
+        if coins > 0:
+            _add_coins(game.player, coins, 'Шахматы: Ничья')
+            if game.opponent:
+                _add_coins(game.opponent, coins, 'Шахматы: Ничья')
+        return
+
+    coins = calculate_reward('STUDENT', None, 'WIN')
+    if coins > 0 and game.winner:
+        _add_coins(game.winner, coins, 'Шахматы: Победа')
+
+
+def _add_coins(user, amount, reason):
+    if amount <= 0:
+        return
+    user.balance += amount
+    user.save()
+    CoinTransaction.objects.create(
+        user=user,
+        amount=amount,
+        reason=reason,
+        source=CoinTransaction.Source.CHESS,
+        balance_after=user.balance
+    )
+    CoinNotification.objects.create(
+        student=user,
+        amount=amount,
+        reason=reason
+    )
+
+
+def _get_stockfish_move(board, bot_level):
+    import chess.engine
+    depth = 8 if bot_level == 'hard' else 5 if bot_level == 'medium' else 2
+    try:
+        engine = chess.engine.SimpleEngine.popen_uci("stockfish")
+        result = engine.play(board, chess.engine.Limit(depth=depth))
+        engine.quit()
+        return result.move
+    except Exception:
+        return None
+
+
+def _apply_bot_move(game):
+    if game.opponent_type != ChessGame.OpponentType.BOT:
+        return False
+    if game.status != ChessGame.Status.IN_PROGRESS:
+        return False
+    if game.current_turn != 'black':
+        return False
+
+    board = chess.Board(game.fen_position)
+    move = _get_stockfish_move(board, game.bot_level)
+    if not move:
+        return False
+
+    san = board.san(move)
+    board.push(move)
+
+    game.fen_position = board.fen()
+    game.last_move = move.uci()
+    history = game.move_history or []
+    history.append(san)
+    game.move_history = history
+    game.current_turn = 'white' if board.turn == chess.WHITE else 'black'
+    game.last_move_at = timezone.now()
+
+    _apply_game_over_state(game, board)
+    game.save()
+    return True
+
+
 class ChessGameStateView(APIView):
     """
     Получить/обновить состояние игры (для PvP polling).
@@ -1010,28 +1124,18 @@ class ChessGameStateView(APIView):
         history.append(san)
         game.move_history = history
         game.current_turn = 'white' if board.turn == chess.WHITE else 'black'
-        
-        # Проверка завершения игры
-        if board.is_checkmate():
-            loser_color = 'white' if board.turn == chess.WHITE else 'black'
-            winner_color = 'black' if loser_color == 'white' else 'white'
-            black_player = game.player if game.white_player != game.player else game.opponent
-            winner = game.white_player if winner_color == 'white' else black_player
-            loser = game.white_player if loser_color == 'white' else black_player
-            game.status = ChessGame.Status.FINISHED
-            game.ended_reason = 'checkmate'
-            game.winner = winner
-            game.loser = loser
-            game.result = ChessGame.Result.WIN if game.player == winner else ChessGame.Result.LOSE
-            game.finished_at = timezone.now()
-        elif board.is_stalemate() or board.is_insufficient_material() or board.can_claim_draw():
-            game.status = ChessGame.Status.FINISHED
-            game.ended_reason = 'draw'
-            game.result = ChessGame.Result.DRAW
-            game.finished_at = timezone.now()
-        
+
+        game_finished = _apply_game_over_state(game, board)
         game.save()
-        
+        if game_finished:
+            _award_chess_rewards(game)
+
+        # Если это игра с ботом, пробуем сделать ход за бота
+        if game.status == ChessGame.Status.IN_PROGRESS and game.opponent_type == ChessGame.OpponentType.BOT:
+            bot_moved = _apply_bot_move(game)
+            if bot_moved and game.status == ChessGame.Status.FINISHED:
+                _award_chess_rewards(game)
+
         return Response({
             'message': 'Ход сделан',
             'game': ChessGameSerializer(game).data
